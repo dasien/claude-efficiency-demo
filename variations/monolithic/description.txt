@@ -1,0 +1,1 @@
+Verbose CLAUDE.md, no agents or skills

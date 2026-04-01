@@ -1,0 +1,1 @@
+No CLAUDE.md, no agents, no skills (control)

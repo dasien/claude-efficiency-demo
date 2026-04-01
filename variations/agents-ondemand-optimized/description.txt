@@ -1,0 +1,1 @@
+Light CLAUDE.md, fewer agents, on-demand skills, terse returns

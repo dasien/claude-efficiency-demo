@@ -1,0 +1,26 @@
+{
+  "variation": "skills-and-agents",
+  "task": "python-calculator-gui",
+  "prompt": "Build a Python GUI calculator application using Tkinter. You must complete each phase in order, producing the required document or artifact before moving to the next phase.\n\n## Phase 1: Requirements Document\n\nWrite a `docs/requirements.md` that captures:\n- Functional requirements (what the calculator must do)\n- Non-functional requirements (performance, usability, error handling)\n- GUI specification (window layout, button placement, display behavior)\n- Edge cases and boundary conditions to handle\n- Acceptance criteria for each requirement\n\nThe calculator must support: addition (+), subtraction (-), multiplication (*), division (/), a display showing the current expression and result, number buttons (0-9) and a decimal point button, operator buttons, an equals button to evaluate, a clear button to reset, keyboard input support (typing numbers and operators), integer and floating-point numbers, and graceful error handling shown in the display (not crashes).\n\n## Phase 2: Architecture Document\n\nWrite a `docs/architecture.md` that includes:\n- High-level system design (MVC/MVP pattern, modules, responsibilities, data flow)\n- Module interface definitions (class and function signatures with types)\n- GUI layout specification (grid layout, widget hierarchy)\n- Design decisions and rationale (why this structure over alternatives)\n- Separation of concerns analysis (how business logic is isolated from GUI code)\n- Error handling strategy (how errors are displayed to the user)\n- Event handling design (button clicks, keyboard input, state management)\n\n## Phase 3: Coding Plan\n\nWrite a `docs/coding-plan.md` that specifies:\n- Implementation order (which modules/classes to build first and why)\n- File-by-file breakdown of what each file contains\n- Dependencies between modules\n- Widget layout plan (row/column grid positions)\n- Estimated complexity per component\n\n## Phase 4: Test Plan\n\nWrite a `docs/test-plan.md` that covers:\n- Test strategy (unit tests for logic, integration approach for GUI)\n- Test cases organized by category: happy path, edge cases, error cases, boundary conditions\n- Expected inputs and outputs for each test case\n- How to test business logic independently from the GUI\n- Coverage goals\n\n## Phase 5: Implementation\n\nImplement the calculator following your architecture and coding plan:\n- `calculator.py` \u2014 main application code (GUI + logic)\n- `calculator_logic.py` \u2014 business logic separated from GUI (if your architecture calls for it)\n- `requirements.txt` \u2014 Python dependencies\n\n## Phase 6: Test Implementation and Execution\n\nImplement and run the tests following your test plan:\n- `test_calculator.py` \u2014 pytest test suite (testing business logic, not GUI)\n- Run all tests and verify they pass\n\nUse `python3` (not `python`) for all commands.",
+  "timestamp": "20260401-131212",
+  "metrics": {
+    "input_tokens": 82,
+    "output_tokens": 36782,
+    "cache_creation_tokens": 232593,
+    "cache_read_tokens": 672271,
+    "total_tokens": 941728,
+    "estimated_cost_usd": 8.1294,
+    "message_count": 50,
+    "tool_call_count": 24,
+    "skills_used": [],
+    "agents_used": [
+      "architect: Write requirements document",
+      "architect: Write architecture document",
+      "architect: Write coding plan document",
+      "architect: Write test plan document",
+      "python-expert: Implement calculator logic",
+      "python-expert: Implement calculator GUI",
+      "tester: Implement calculator tests"
+    ]
+  }
+}
