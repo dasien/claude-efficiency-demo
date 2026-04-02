@@ -1,0 +1,30 @@
+{
+  "variation": "agents-ondemand-optimized",
+  "task": "advanced-calculator",
+  "prompt": "Read the requirements document at docs/requirements.md. This is a comprehensive specification for an advanced calculator application with Basic, Scientific, and Programmer modes built with Python and Tkinter.\n\nImplement the full application following these phases in order:\n\n1. Write docs/architecture.md \u2014 high-level system design, MVC architecture, module interfaces, GUI layout per mode, event handling design\n2. Write docs/coding-plan.md \u2014 implementation order, file-by-file breakdown, dependencies between modules\n3. Write docs/test-plan.md \u2014 test strategy, test cases organized by mode and category (happy path, edge cases, error cases)\n4. Implement all source code following your architecture \u2014 separate business logic from GUI, one module per calculator mode\n5. Write and run tests to verify correctness \u2014 test business logic independently from GUI\n\nUse `python3` (not `python`) for all commands.",
+  "timestamp": "20260401-220352",
+  "metrics": {
+    "input_tokens": 126,
+    "output_tokens": 67553,
+    "cache_creation_tokens": 609145,
+    "cache_read_tokens": 2981948,
+    "total_tokens": 3658772,
+    "estimated_cost_usd": 20.9628,
+    "message_count": 90,
+    "tool_call_count": 57,
+    "peak_context_main": 32388,
+    "final_context_main": 32388,
+    "peak_context_any": 70578,
+    "skills_used": [
+      "python-coding",
+      "gui-tkinter",
+      "architecture",
+      "testing"
+    ],
+    "agents_used": [
+      "doc-writer: Write architecture, coding plan, test plan",
+      "implementer: Implement full calculator application",
+      "tester: Write and run all calculator tests"
+    ]
+  }
+}

@@ -33,6 +33,7 @@ REPO_ROOT = Path(__file__).parent.resolve()
 VARIATIONS_DIR = REPO_ROOT / "variations"
 TASKS_DIR = REPO_ROOT / "tasks"
 RESULTS_DIR = REPO_ROOT / "results"
+CURRENT_RUN_FILE = RESULTS_DIR / ".current-run"
 CLAUDE_HOME = Path.home() / ".claude"
 
 # Model pricing (per 1M tokens) — Opus 4.6
@@ -42,6 +43,52 @@ PRICING = {
     "cache_creation": 18.75,
     "cache_read": 1.50,
 }
+
+
+def get_active_run_group() -> str | None:
+    """Get the name of the currently active run group."""
+    if CURRENT_RUN_FILE.exists():
+        name = CURRENT_RUN_FILE.read_text().strip()
+        if name:
+            return name
+    return None
+
+
+def set_active_run_group(name: str) -> Path:
+    """Set the active run group and create its directory."""
+    RESULTS_DIR.mkdir(exist_ok=True)
+    group_dir = RESULTS_DIR / name
+    group_dir.mkdir(exist_ok=True)
+    CURRENT_RUN_FILE.write_text(name)
+    return group_dir
+
+
+def get_active_run_dir() -> Path | None:
+    """Get the directory for the active run group."""
+    name = get_active_run_group()
+    if name is None:
+        return None
+    group_dir = RESULTS_DIR / name
+    if group_dir.is_dir():
+        return group_dir
+    return None
+
+
+def list_run_groups() -> list[dict]:
+    """List all run groups with their run counts."""
+    groups = []
+    if not RESULTS_DIR.exists():
+        return groups
+    active = get_active_run_group()
+    for d in sorted(RESULTS_DIR.iterdir()):
+        if d.is_dir() and not d.name.startswith("."):
+            run_count = len(list(d.glob("*/result.json")))
+            groups.append({
+                "name": d.name,
+                "run_count": run_count,
+                "active": d.name == active,
+            })
+    return groups
 
 
 # Preferred display order for variations. Names not listed sort to the end alphabetically.
@@ -89,6 +136,7 @@ TASK_ORDER = [
     "python-calculator",
     "python-calculator-docs",
     "python-calculator-gui",
+    "advanced-calculator",
 ]
 
 
@@ -120,10 +168,19 @@ def discover_tasks() -> list[dict]:
     return tasks
 
 
-def create_test_directory(variation_path: Path) -> Path:
+def create_test_directory(variation_path: Path, task_name: str) -> Path:
     """Create an ephemeral temp directory with the variation's .claude/ folder and a git repo."""
     tmp_dir = Path(tempfile.mkdtemp(prefix="claude-test-")).resolve()
     shutil.copytree(variation_path / ".claude", tmp_dir / ".claude")
+    # Copy task seed files if a directory exists for this task
+    task_seed_dir = TASKS_DIR / task_name
+    if task_seed_dir.is_dir():
+        for item in task_seed_dir.rglob("*"):
+            if item.is_file():
+                rel = item.relative_to(task_seed_dir)
+                dest = tmp_dir / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(item, dest)
     # Initialize a git repo (required for Claude Code)
     subprocess.run(
         ["git", "init"],
@@ -322,8 +379,12 @@ def save_result(
     variation_name: str, task_name: str, prompt_text: str, metrics: dict,
     test_dir: Path | None = None,
 ) -> Path:
-    """Save test result as JSON and copy output artifacts."""
-    RESULTS_DIR.mkdir(exist_ok=True)
+    """Save test result as JSON and copy output artifacts into the active run group."""
+    group_dir = get_active_run_dir()
+    if group_dir is None:
+        console.print("[red]No active run group. Use 'open' to start one first.[/red]")
+        raise SystemExit(1)
+
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     run_name = f"{variation_name}_{task_name}_{timestamp}"
     result = {
@@ -333,23 +394,31 @@ def save_result(
         "timestamp": timestamp,
         "metrics": metrics,
     }
-    result_path = RESULTS_DIR / f"{run_name}.json"
-    result_path.write_text(json.dumps(result, indent=2))
+    run_dir = group_dir / run_name
+    run_dir.mkdir(parents=True, exist_ok=True)
 
-    # Copy output artifacts if test directory is available
+    # Copy output artifacts first, then write JSON at the root of the run dir
     if test_dir and test_dir.exists():
-        output_dir = RESULTS_DIR / run_name / "output"
+        output_dir = run_dir / "output"
         copy_output_artifacts(test_dir, output_dir)
+
+    result_path = run_dir / "result.json"
+    result_path.write_text(json.dumps(result, indent=2))
 
     return result_path
 
 
-def load_results() -> list[dict]:
-    """Load all saved results."""
+def load_results(group_name: str | None = None) -> list[dict]:
+    """Load results from a run group. Defaults to the active group."""
+    if group_name is None:
+        group_name = get_active_run_group()
+    if group_name is None:
+        return []
+    group_dir = RESULTS_DIR / group_name
+    if not group_dir.is_dir():
+        return []
     results = []
-    if not RESULTS_DIR.exists():
-        return results
-    for f in sorted(RESULTS_DIR.glob("*.json")):
+    for f in sorted(group_dir.glob("*/result.json")):
         try:
             results.append(json.loads(f.read_text()))
         except json.JSONDecodeError:
@@ -381,8 +450,37 @@ def cmd_list():
     console.print(table)
 
 
+def cmd_open() -> None:
+    """Open a new run group with an auto-generated timestamp name."""
+    name = f"run_{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    set_active_run_group(name)
+    console.print(f"[green]Opened new run group:[/green] [bold]{name}[/bold]")
+
+
+def cmd_runs() -> None:
+    """List all run groups."""
+    groups = list_run_groups()
+    if not groups:
+        console.print("[yellow]No run groups found. Use 'open' to create one.[/yellow]")
+        return
+
+    table = Table(title="Run Groups")
+    table.add_column("Name", style="cyan")
+    table.add_column("Runs", justify="right")
+    table.add_column("Active", justify="center")
+    for g in groups:
+        active = "[green]>>>[/green]" if g["active"] else ""
+        table.add_row(g["name"], str(g["run_count"]), active)
+    console.print(table)
+
+
 def cmd_run(prompt_override: str | None = None):
     """Interactive test run flow."""
+    if get_active_run_group() is None:
+        console.print("[red]No active run group. Use 'open <name>' to start one first.[/red]")
+        return
+    console.print(f"[dim]Run group: {get_active_run_group()}[/dim]")
+
     variations = discover_variations()
     tasks = discover_tasks()
 
@@ -422,7 +520,7 @@ def cmd_run(prompt_override: str | None = None):
     # Create test environment
     session_id = str(uuid.uuid4())
     console.print(f"\n[bold]Setting up test environment...[/bold]")
-    test_dir = create_test_directory(variation["path"])
+    test_dir = create_test_directory(variation["path"], task["name"])
     console.print(f"  Test directory: [green]{test_dir}[/green]")
     console.print(f"  Session ID: [green]{session_id}[/green]")
 
@@ -489,51 +587,66 @@ def _print_metrics(variation: str, task: str, metrics: dict):
     console.print(table)
 
 
-def cmd_compare():
-    """Show comparison table of all saved results."""
-    results = load_results()
+def cmd_compare(group_name: str | None = None):
+    """Generate a markdown comparison report for a run group."""
+    effective_group = group_name or get_active_run_group()
+    if effective_group is None:
+        console.print("[yellow]No active run group. Use 'open <name>' first, or 'compare --group <name>'.[/yellow]")
+        return
+    results = load_results(effective_group)
     if not results:
-        console.print("[yellow]No results found. Run some tests first![/yellow]")
+        console.print(f"[yellow]No results in run group '{effective_group}'.[/yellow]")
         return
 
-    table = Table(title="Comparison of All Runs")
-    table.add_column("Variation", style="cyan")
-    table.add_column("Task", style="white")
-    table.add_column("Timestamp", style="dim")
-    table.add_column("Total Tokens", justify="right")
-    table.add_column("Input", justify="right")
-    table.add_column("Output", justify="right")
-    table.add_column("Cache Create", justify="right")
-    table.add_column("Cache Read", justify="right")
-    table.add_column("Cost", justify="right", style="green")
-    table.add_column("Messages", justify="right")
-    table.add_column("Tool Calls", justify="right")
-    table.add_column("Peak Ctx", justify="right", style="red")
-    table.add_column("Final Ctx", justify="right")
-    table.add_column("Skills", style="yellow")
-    table.add_column("Agents", style="magenta")
+    group_dir = RESULTS_DIR / effective_group
+    report_path = group_dir / "comparison.md"
 
+    lines = [f"# Comparison — {effective_group}\n"]
+
+    # Cost & efficiency table
+    lines.append("## Cost & Efficiency\n")
+    lines.append("| Variation | Task | Cost | Total Tokens | Cache Create | Cache Read | Output | Messages | Tools |")
+    lines.append("|-----------|------|------|-------------|-------------|------------|--------|----------|-------|")
     for r in results:
         m = r["metrics"]
-        table.add_row(
-            r["variation"],
-            r["task"],
-            r["timestamp"],
-            f"{m['total_tokens']:,}",
-            f"{m['input_tokens']:,}",
-            f"{m['output_tokens']:,}",
-            f"{m['cache_creation_tokens']:,}",
-            f"{m['cache_read_tokens']:,}",
-            f"${m['estimated_cost_usd']:.4f}",
-            str(m["message_count"]),
-            str(m["tool_call_count"]),
-            f"{m.get('peak_context_any', 0):,}",
-            f"{m.get('final_context_main', 0):,}",
-            ", ".join(m.get("skills_used", [])) or "-",
-            ", ".join(m.get("agents_used", [])) or "-",
+        lines.append(
+            f"| {r['variation']} | {r['task']} "
+            f"| ${m['estimated_cost_usd']:.4f} "
+            f"| {m['total_tokens']:,} "
+            f"| {m['cache_creation_tokens']:,} "
+            f"| {m['cache_read_tokens']:,} "
+            f"| {m['output_tokens']:,} "
+            f"| {m['message_count']} "
+            f"| {m['tool_call_count']} |"
         )
 
-    console.print(table)
+    # Context table
+    lines.append("\n## Context Usage\n")
+    lines.append("| Variation | Peak Context (main) | Final Context (main) | Peak Context (any) |")
+    lines.append("|-----------|--------------------:|---------------------:|-------------------:|")
+    for r in results:
+        m = r["metrics"]
+        lines.append(
+            f"| {r['variation']} "
+            f"| {m.get('peak_context_main', 0):,} "
+            f"| {m.get('final_context_main', 0):,} "
+            f"| {m.get('peak_context_any', 0):,} |"
+        )
+
+    # Skills & agents table
+    lines.append("\n## Skills & Agents Used\n")
+    lines.append("| Variation | Skills | Agents |")
+    lines.append("|-----------|--------|--------|")
+    for r in results:
+        m = r["metrics"]
+        skills = ", ".join(m.get("skills_used", [])) or "-"
+        agents = m.get("agents_used", [])
+        agents_str = "; ".join(agents) if agents else "-"
+        lines.append(f"| {r['variation']} | {skills} | {agents_str} |")
+
+    report = "\n".join(lines) + "\n"
+    report_path.write_text(report)
+    console.print(f"[green]Comparison written to: {report_path}[/green]")
 
 
 def main():
@@ -543,6 +656,8 @@ def main():
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     subparsers.add_parser("list", help="List available variations and tasks")
+    subparsers.add_parser("open", help="Open a new run group")
+    subparsers.add_parser("runs", help="List all run groups")
     run_parser = subparsers.add_parser("run", help="Run an interactive test")
     run_parser.add_argument(
         "--prompt",
@@ -550,16 +665,26 @@ def main():
         default=None,
         help="Override the task's default prompt with a custom one",
     )
-    subparsers.add_parser("compare", help="Compare results from previous runs")
+    compare_parser = subparsers.add_parser("compare", help="Compare results in the active run group")
+    compare_parser.add_argument(
+        "--group",
+        type=str,
+        default=None,
+        help="Compare a specific run group instead of the active one",
+    )
 
     args = parser.parse_args()
 
     if args.command == "list":
         cmd_list()
+    elif args.command == "open":
+        cmd_open()
+    elif args.command == "runs":
+        cmd_runs()
     elif args.command == "run":
         cmd_run(prompt_override=args.prompt)
     elif args.command == "compare":
-        cmd_compare()
+        cmd_compare(group_name=args.group)
     else:
         parser.print_help()
 
